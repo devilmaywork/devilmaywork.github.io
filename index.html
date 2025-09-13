@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地铁偷拍反诬战</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            padding: 10px;
+            background-color: #0f0f23;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            min-height: 100dvh; /* 动态视口高度 */
+            overflow: hidden; /* 锁定页面滚动，避免 iOS 下拉回弹影响布局 */
+            overscroll-behavior-y: contain; /* 避免浏览器回弹影响 */
+        }
+        .game-container {
+            width: 100%;
+            max-width: 480px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        h1 {
+            color: #FFFFFF;
+            text-align: center;
+            margin: 10px 0;
+            font-size: clamp(20px, 4.5vw, 28px);
+        }
+        .instruction {
+            color: #CCCCCC;
+            text-align: center;
+            width: 100%;
+            max-width: 480px;
+            margin: 0 auto 15px auto;
+            font-size: clamp(14px, 3.5vw, 16px);
+            padding: 0 10px;
+        }
+        canvas {
+            border: 1px solid #000;
+            display: block;
+            margin: 0 auto;
+            background-color: #1a1a2e;
+            max-width: 100%;
+            height: auto;
+        }
+        
+        /* 横屏适配 */
+        @media (orientation: landscape) and (max-height: 500px) {
+            body {
+                padding: 5px;
+                justify-content: flex-start;
+            }
+            h1 {
+                font-size: 16px;
+                margin: 5px 0;
+            }
+            .instruction {
+                font-size: 11px;
+                margin: 0 auto 10px auto;
+            }
+            canvas {
+                max-height: 80vh;
+                max-height: 80dvh;
+            }
+        }
+        
+        /* 小屏幕优化 */
+        @media (max-width: 400px) {
+            body {
+                padding: 5px;
+            }
+            .game-container {
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>地铁偷拍反诬战</h1>
+        <div class="instruction">
+            游戏说明：你在地铁上被恶意污蔑偷拍，需要通过正确的选择来洗清罪名并让对方付出代价。<br>
+            操作方式：点击选项进行选择。<br>
+            免责声明：本游戏纯属虚构，如有雷同，纯属巧合。
+        </div>
+    </div>
+    
+    <script>
+// 地铁偷拍污蔑案件主题游戏
+// 微信小游戏项目 - 全部代码集中在此文件
+
+class SubwayIncidentGame {
+    constructor() {
+        this.initializeCanvas();
+        this.initializeGameState();
+        this.initializeGameData();
+        this.setupEventListeners();
+        this.startGame();
+    }
+
+    initializeCanvas() {
+        this.canvas = document.createElement('canvas');
+        
+        // 响应式Canvas尺寸
+        this.setupResponsiveCanvas();
+        
+        // 添加到容器而不是body
+        const container = document.querySelector('.game-container');
+        container.appendChild(this.canvas);
+        
+        // 设置文字渲染优化
+        this.ctx.textAlign = 'left';
+        this.ctx.textBaseline = 'top'; // 默认基线，按需在各处调整
+        this.ctx.imageSmoothingEnabled = true;
+        this.ctx.imageSmoothingQuality = 'high';
+        
+        // 记录初始视口高度，避免 iOS Safari 动态地址栏导致高度抖动
+        this.initialViewportHeight = window.innerHeight;
+        
+        // 监听屏幕旋转和尺寸变化
+        window.addEventListener('resize', () => this.handleResize());
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => {
+                this.initialViewportHeight = window.innerHeight;
+                this.handleResize();
+            }, 100);
+        });
+    }
+
+    setupResponsiveCanvas() {
+        const maxWidth = 480;
+        const aspectRatio = 667 / 375; // 原始宽高比
+        
+        // 获取设备像素比
+        const devicePixelRatio = window.devicePixelRatio || 1;
+        
+        // 获取可用空间
+        const availableWidth = Math.min(window.innerWidth - 20, maxWidth);
+        // 使用初始视口高度与当前高度的较大值，避免 iOS Safari 下拉导致临时变小
+        const viewportHeight = window.innerHeight || this.initialViewportHeight || 0;
+        const availableHeight = viewportHeight - 120; // 减去标题和说明的空间
+        
+        // 根据可用空间计算Canvas尺寸
+        let canvasWidth = availableWidth;
+        let canvasHeight = canvasWidth * aspectRatio;
+        
+        // 如果高度超出可用空间，则按高度缩放
+        if (canvasHeight > availableHeight) {
+            canvasHeight = availableHeight;
+            canvasWidth = canvasHeight / aspectRatio;
+        }
+        
+        // 设置Canvas的实际像素尺寸（考虑设备像素比）
+        this.canvas.width = canvasWidth * devicePixelRatio;
+        this.canvas.height = canvasHeight * devicePixelRatio;
+        
+        // 设置CSS显示尺寸
+        this.canvas.style.width = canvasWidth + 'px';
+        this.canvas.style.height = canvasHeight + 'px';
+        
+        // 缩放Canvas上下文以匹配设备像素比
+        this.ctx = this.canvas.getContext('2d');
+        this.ctx.scale(devicePixelRatio, devicePixelRatio);
+        
+        // 存储设备像素比和显示尺寸，供后续使用
+        this.devicePixelRatio = devicePixelRatio;
+        this.displayWidth = canvasWidth;
+        this.displayHeight = canvasHeight;
+    }
+
+    handleResize() {
+        const oldWidth = this.canvas.width;
+        const oldHeight = this.canvas.height;
+        
+        this.setupResponsiveCanvas();
+        
+        // 尺寸变化或布局变化后，始终重新渲染，避免缩放后内容不刷新
+        this.render();
+    }
+
+    initializeGameState() {
+        this.gameState = {
+            reputation: 50,
+            evidence: [],
+            witnesses: 0,
+            legalAction: false,
+            violence: false,
+            apology: false
+        };
+    }
+
+    initializeGameData() {
+        this.gameData = {
+            start: {
+                id: 'start',
+                title: '戎都地铁上的指控',
+                description: '2077年11月6日晚，你和同学聚餐后坐地铁回宿舍。在9号线行至科信站时，突然对面两个女生站起来大声叫道："你是不是在偷拍！你鞋子上有摄像头，刚刚闪了绿光！"列车安全员立即架住了你的胳膊。全车厢的人都看向你...',
+                choices: [
+                    { id: 'confused_response', text: '一脸疑惑，完全不知道发生了什么', nextSceneId: 'confusion_scene' },
+                    { id: 'deny_calmly', text: '冷静否认，要求她们拿出证据', nextSceneId: 'deny_evidence' },
+                    { id: 'counter_accuse', text: '反指控她们是小偷，转移注意力', nextSceneId: 'counter_accuse_path' },
+                    { id: 'violence_option', text: '愤怒失控，准备动手打人', nextSceneId: 'violence_immediate' }
+                ]
+            },
+
+            confusion_scene: {
+                id: 'confusion_scene',
+                title: '突如其来的指控',
+                description: '你一脸疑惑，完全不知道发生了什么。列车安全员架住你的胳膊，其中一个女生指着你的鞋子说："他鞋带最前端那里刚刚闪了绿光，我们看过去他就把它关了！"在全车人注视下，你感到被"逮捕"了。',
+                choices: [
+                    { id: 'demand_explanation', text: '要求她们详细说明看到了什么', nextSceneId: 'detailed_accusation' },
+                    { id: 'cooperate_check', text: '配合检查，主动脱鞋证明清白', nextSceneId: 'forced_shoe_removal' },
+                    { id: 'refuse_humiliation', text: '拒绝在众人面前脱鞋', nextSceneId: 'dignity_stand' },
+                    { id: 'escape_attempt', text: '骂对方长得像母猪，谁会偷拍母猪？', nextSceneId: 'mutual_insults' }
+                ]
+            },
+
+            detailed_accusation: {
+                id: 'detailed_accusation',
+                title: '详细指控说明',
+                description: '两名女生开始具体描述：她们称“鞋带前端闪绿光，像摄像头；我们看过去他就关掉了”。你需要在事实层面逐项回应。',
+                choices: [
+                    { id: 'reflection_reason', text: '解释可能是广告牌反光与角度变化', nextSceneId: 'reflection_explanation' },
+                    { id: 'request_monitor', text: '要求调取车厢监控核实', nextSceneId: 'surveillance_scene' },
+                    { id: 'ask_evidence', text: '询问是否有拍到“绿光”的影像证据', nextSceneId: 'evidence_scene' }
+                ]
+            },
+
+            deny_path: {
+                id: 'deny_path',
+                title: '冷静应对',
+                description: '你深吸一口气，冷静地说："我没有偷拍任何人，请你们拿出证据。如果没有证据就随意指控他人，这是诽谤。"周围乘客开始注意到你的冷静态度。',
+                choices: [
+                    { id: 'demand_evidence', text: '坚持要求她们出示证据', nextSceneId: 'evidence_scene' },
+                    { id: 'find_witnesses', text: '寻找周围目击者作证', nextSceneId: 'witness_scene' },
+                    { id: 'record_video', text: '开始录像记录整个过程', nextSceneId: 'record_scene' }
+                ]
+            },
+
+            counter_accuse_path: {
+                id: 'counter_accuse_path',
+                title: '反击策略',
+                description: '你突然指向她们的包包："大家小心！我看到她们在偷看别人的钱包！"这个突然的反击让她们措手不及，周围乘客开始警觉地检查自己的物品。',
+                choices: [
+                    { id: 'escalate_accusation', text: '加大力度指控她们', nextSceneId: 'chaos_scene' },
+                    { id: 'expose_setup', text: '揭露这可能是设计好的陷阱', nextSceneId: 'expose_scene' },
+                    { id: 'calm_redirect', text: '冷静地说这是为了说明指控需要证据', nextSceneId: 'smart_redirect' }
+                ]
+            },
+
+            call_police_path: {
+                id: 'call_police_path',
+                title: '报警处理',
+                description: '你拿出手机拨打110："警察同志，我在地铁上被人诽谤，说我偷拍，请派人来处理。"她们看到你报警，神色开始慌张，开始小声商量什么。',
+                choices: [
+                    { id: 'wait_police', text: '等待警察到来，保持冷静', nextSceneId: 'police_scene' },
+                    { id: 'gather_info', text: '趁机收集她们的信息和证据', nextSceneId: 'detective_mode' },
+                    { id: 'broadcast_incident', text: '向车厢广播说明情况', nextSceneId: 'public_announce' }
+                ]
+            },
+
+            show_phone_scene: {
+                id: 'show_phone_scene',
+                title: '展示清白',
+                description: '你主动把手机递给周围的乘客："大家可以看看我的手机，我刚才在看微信，根本没有拍照。"几个热心乘客接过手机检查，发现确实没有偷拍照片。',
+                choices: [
+                    { id: 'demand_apology', text: '要求她们公开道歉', nextSceneId: 'demand_apology_scene' },
+                    { id: 'let_it_go', text: '算了，下车离开', nextSceneId: 'passive_ending' },
+                    { id: 'sue_threat', text: '威胁要起诉她们诽谤', nextSceneId: 'legal_threat' }
+                ]
+            },
+
+            evidence_scene: {
+                id: 'evidence_scene',
+                title: '要求证据',
+                description: '你坚定地说："既然你们说我偷拍，那就拿出证据来。我的手机在这里，拍照会有快门声音，你们听到了吗？车厢里有监控，可以调取。"她们开始支支吾吾。',
+                choices: [
+                    { id: 'check_surveillance', text: '要求查看车厢监控', nextSceneId: 'surveillance_scene' },
+                    { id: 'analyze_motive', text: '分析她们的动机', nextSceneId: 'motive_scene' },
+                    { id: 'public_trial', text: '让车厢里的人当陪审团', nextSceneId: 'public_trial' }
+                ]
+            },
+
+            witness_scene: {
+                id: 'witness_scene',
+                title: '寻找证人',
+                description: '你转向周围的乘客："各位，刚才有人看到我拍照了吗？我一直在看手机聊天，有人可以作证吗？"一个坐在你旁边的大爷点头："我一直在旁边，他确实在聊微信。"',
+                choices: [
+                    { id: 'gather_more_witnesses', text: '继续寻找更多证人', nextSceneId: 'multiple_witnesses' },
+                    { id: 'confront_accusers', text: '拿着证词直接对质', nextSceneId: 'confrontation' },
+                    { id: 'turn_tables', text: '反过来指控她们诬陷', nextSceneId: 'turn_tables' }
+                ]
+            },
+
+            record_scene: {
+                id: 'record_scene',
+                title: '记录证据',
+                description: '你举起手机开始录像："我现在开始录像记录这个过程，防止有人颠倒黑白。"她们看到被录像，立即遮脸并开始退缩："你不能拍我们！"',
+                choices: [
+                    { id: 'continue_recording', text: '继续录像，记录她们的反应', nextSceneId: 'recording_evidence' },
+                    { id: 'livestream', text: '开直播让网友评判', nextSceneId: 'livestream_scene' },
+                    { id: 'stop_recording', text: '停止录像，和平解决', nextSceneId: 'peaceful_resolution' }
+                ]
+            },
+
+            chaos_scene: {
+                id: 'chaos_scene',
+                title: '混乱升级',
+                description: '整个车厢陷入混乱，有人检查钱包，有人指责你们，有人要报警。地铁工作人员赶来维持秩序。两名指控者情绪失控，气急败坏、近乎歇斯底里，言语激烈且前后矛盾。',
+                choices: [
+                    { id: 'mutual_insult', text: '大骂对方，向对方吐口水', nextSceneId: 'mutual_insults' },
+                    { id: 'escape_chaos', text: '趁乱下车逃离', nextSceneId: 'escape_ending' },
+                    { id: 'control_situation', text: '试图控制局面', nextSceneId: 'leadership_moment' }
+                ]
+            },
+
+            mutual_insults: {
+                id: 'mutual_insults',
+                title: '言语对骂',
+                description: '情绪全面失控，你与指控者互相指责、大声斥骂，措辞激烈，场面一度失去控制。围观者骚动，工作人员试图分隔双方，但火药味愈发浓。',
+                choices: [
+                    { id: 'violence_buildup', text: '愤怒失控，准备动手打人', nextSceneId: 'violence_immediate' },
+                    { id: 'escape_now', text: '趁机逃离', nextSceneId: 'escape_ending' }
+                ]
+            },
+
+            expose_scene: {
+                id: 'expose_scene',
+                title: '揭露陷阱',
+                description: '你大声说："大家想想，如果真的偷拍，她们为什么不第一时间报警而是大声嚷嚷？这很可能是设计好的陷阱，想要敲诈或者碰瓷！"周围乘客开始重新审视这个情况。',
+                choices: [
+                    { id: 'explain_scam', text: '详细解释这种诈骗手法', nextSceneId: 'scam_explanation' },
+                    { id: 'check_their_phones', text: '要求检查她们的手机', nextSceneId: 'reverse_check' },
+                    { id: 'find_accomplices', text: '寻找可能的同伙', nextSceneId: 'accomplice_hunt' }
+                ]
+            },
+
+            smart_redirect: {
+                id: 'smart_redirect',
+                title: '智慧化解',
+                description: '你冷静地说："我刚才的指控当然是不对的，因为没有证据。同样，你们指控我偷拍也需要证据。这就是我想说明的道理。"周围乘客纷纷点头，觉得你说得有道理。',
+                choices: [
+                    { id: 'education_moment', text: '继续普及法律知识', nextSceneId: 'education_scene' },
+                    { id: 'propose_solution', text: '提议和平解决方案', nextSceneId: 'mediation_scene' },
+                    { id: 'demand_fair_treatment', text: '要求公平对待', nextSceneId: 'justice_scene' }
+                ]
+            },
+
+            police_scene: {
+                id: 'police_scene',
+                title: '警察介入',
+                description: '地铁警察很快赶到现场。你冷静地向警察说明情况，而那两个女性却开始紧张起来，她们的故事前后不一致，警察开始怀疑她们的动机。',
+                choices: [
+                    { id: 'full_cooperation', text: '全力配合警察调查', nextSceneId: 'police_investigation' },
+                    { id: 'press_charges', text: '坚持要对她们提起诽谤诉讼', nextSceneId: 'legal_action' },
+                    { id: 'seek_compensation', text: '要求精神损失赔偿', nextSceneId: 'compensation_scene' }
+                ]
+            },
+
+            surveillance_scene: {
+                id: 'surveillance_scene',
+                title: '监控调查',
+                description: '地铁工作人员同意调取监控录像。录像显示你大部分时间在看手机，但女生坚持认为“鞋子绿光可能拍到了，监控角度看不见”。监控无法直接证明鞋子没有偷拍，争议继续。',
+                choices: [
+                    { id: 'witness_route', text: '转向寻找证人作证', nextSceneId: 'witness_scene' },
+                    { id: 'show_album', text: '当场出示手机相册与使用记录', nextSceneId: 'phone_evidence' },
+                    { id: 'law_path', text: '进入法律之路（起诉解决）', nextSceneId: 'legal_action' }
+                ]
+            },
+            device_theory: {
+                id: 'device_theory',
+                title: '设备独立存储的说法',
+                description: '诬告方坚持认为：就算你手机没有照片，也可能是“独立存储的微型设备”或“无线传输到别处”。因此手机相册证据“没有意义”。你需要选择更具说服力的方式。',
+                choices: [
+                    { id: 'request_rf_scan', text: '请求安保/警方进行金属与射频检测', nextSceneId: 'technical_check' },
+                    { id: 'reinspect_shoes', text: '再次在警方在场下检查鞋子', nextSceneId: 'forced_shoe_removal' },
+                    { id: 'collect_witnesses_more', text: '继续收集证人并全程录像备案', nextSceneId: 'witness_contacts' },
+                    { id: 'turn_to_law', text: '直接转入起诉维权流程', nextSceneId: 'legal_action' }
+                ]
+            },
+            technical_check: {
+                id: 'technical_check',
+                title: '技术排查',
+                description: '在安保/警方见证下，使用金属探测、射频检测等手段对你鞋子与随身物品进行排查，未发现可疑设备或异常信号。对方仍嘴硬，但围观者的怀疑开始减弱。',
+                choices: [
+                    { id: 'apology_follow', text: '要求其做出公开承认与不再传播', nextSceneId: 'apology_followup' },
+                    { id: 'legal_next', text: '以技术排查结果为依据提起诉讼', nextSceneId: 'legal_action' },
+                    { id: 'witness_recording', text: '记录证人与检测结果，留存证据', nextSceneId: 'witness_contacts' }
+                ]
+            },
+
+            public_apology_scene: {
+                id: 'public_apology_scene',
+                title: '公开道歉',
+                description: '在众人的压力下，那两个女性不得不当众道歉。但她们的道歉显得很不情愿，你感觉这件事还没有完全结束。周围乘客对她们的行为表示谴责。',
+                choices: [
+                    { id: 'accept_apology', text: '接受道歉，但要求后续处理', nextSceneId: 'apology_followup' },
+                    { id: 'not_enough', text: '认为仅仅道歉是不够的', nextSceneId: 'demand_more' },
+                    { id: 'report_anyway', text: '还是要报警备案', nextSceneId: 'police_scene' }
+                ]
+            },
+            apology_followup: {
+                id: 'apology_followup',
+                title: '道歉后的处置',
+                description: '你表示接受道歉，但必须有实际措施来终结争议，避免“道歉后继续发酵”的局面。下一步你要如何确保停止伤害？',
+                choices: [
+                    { id: 'delete_media', text: '要求当场删除拍摄你的影像', nextSceneId: 'photo_deletion' },
+                    { id: 'written_statement', text: '要求她们写下不再传播的声明', nextSceneId: 'written_commitment' },
+                    { id: 'collect_witness', text: '当场记录证人联系方式以备维权', nextSceneId: 'witness_contacts' },
+                    { id: 'check_monitor', text: '现场要求调看监控确认', nextSceneId: 'surveillance_scene' }
+                ]
+            },
+            written_commitment: {
+                id: 'written_commitment',
+                title: '书面承诺',
+                description: '在围观者与安保的见证下，她们写下不再传播、不得歪曲事实的承诺书。一旦违背，你将以此为证据追责。',
+                choices: [
+                    { id: 'file_record', text: '拍照留档并报警备案', nextSceneId: 'police_scene' },
+                    { id: 'leave_peacefully', text: '收尾离开，保留证据', nextSceneId: 'quiet_victory' }
+                ]
+            },
+            demand_more: {
+                id: 'demand_more',
+                title: '提出实质要求',
+                description: '你明确提出：仅口头道歉不能结束伤害，必须要有“删除影像、书面承诺、现场监控确认、证人记录”等配套措施。',
+                choices: [
+                    { id: 'delete_media_req', text: '要求当场删除拍摄你的影像', nextSceneId: 'photo_deletion' },
+                    { id: 'written_commitment_req', text: '要求写下不再传播的书面承诺', nextSceneId: 'written_commitment' },
+                    { id: 'monitor_req', text: '要求现场调看监控确认', nextSceneId: 'surveillance_scene' },
+                    { id: 'witness_req', text: '记录愿作证的围观者联系方式', nextSceneId: 'witness_contacts' }
+                ]
+            },
+
+            scam_explanation: {
+                id: 'scam_explanation',
+                title: '揭露诈骗',
+                description: '你向大家解释："这是一种网络上有时会流传的套路，先污蔑你偷拍，再要求私了。也可能只是误解。"乘客们开始冷静下来，并没有证据指向她们是小偷。',
+                choices: [
+                    { id: 'call_security', text: '通知地铁安保协助核查', nextSceneId: 'police_scene' },
+                    { id: 'gather_evidence', text: '理性收集证据', nextSceneId: 'evidence_collection' },
+                    { id: 'avoid_defamation', text: '避免进一步诽谤，转向法律之路', nextSceneId: 'legal_victory' }
+                ]
+            },
+
+            // 结局场景
+            weak_ending: {
+                id: 'weak_ending',
+                title: '软弱结局',
+                description: '你一再道歉，最终她们才罢休。但围观者都认为你确实做了什么不当的事情。你的声誉受损，这件事可能会被传播开来，影响你的工作和生活。有时候，一味的退让并不能解决问题。',
+                choices: [],
+                isEnding: true,
+                endingType: 'bad',
+                bgColor: '#8B0000'
+            },
+
+            perfect_vindication: {
+                id: 'perfect_vindication',
+                title: '完美洗白',
+                description: '通过你的冷静应对和智慧，不仅成功证明了自己的清白，还揭露了她们的恶意诬陷。警方介入调查后发现这是一起有预谋的诈骗案件。她们被依法处理，你获得了精神损失赔偿，并且这个案例成为了反诈骗的典型教材。正义得到了伸张！',
+                choices: [],
+                isEnding: true,
+                endingType: 'good',
+                bgColor: '#006400'
+            },
+
+            legal_victory: {
+                id: 'legal_victory',
+                title: '法律之路',
+                description: '你决定走法律途径起诉维权。你将经历立案、举证、开庭与上诉的全过程。这条路漫长而艰难，但你仍选择直面它。',
+                choices: [
+                    { id: 'file_lawsuit', text: '正式立案，进入一审', nextSceneId: 'first_trial' }
+                ]
+            },
+
+            first_trial: {
+                id: 'first_trial',
+                title: '一审开庭',
+                description: '一审正式开庭。你陈述经历、提交证据，并从光学与现场位置等角度解释“绿光”反光成因。庭审紧张而漫长。',
+                choices: [
+                    { id: 'first_trial_loss', text: '等待结果：一审判决', nextSceneId: 'first_trial_loss' }
+                ]
+            },
+
+            first_trial_loss: {
+                id: 'first_trial_loss',
+                title: '一审判决：不构成侵害',
+                description: '法院认为对方“不构成对你一般人格权的侵害”。这意味着你在车厢被指控、被迫脱鞋、站台受辱的经历，在判决书中未被认定为法律意义上的侵害。',
+                choices: [
+                    { id: 'appeal_to_second', text: '不服判决，提起二审', nextSceneId: 'second_trial_appeal' },
+                    { id: 'accept_and_exit', text: '接受判决，带着失望离开', nextSceneId: 'bitter_reality_ending' }
+                ]
+            },
+
+            second_trial_appeal: {
+                id: 'second_trial_appeal',
+                title: '二审开庭前后',
+                description: '二审受理，期间多轮调解仍未达成一致。你再次提交材料、补充论证，等待最终判决。',
+                choices: [
+                    { id: 'second_trial_final', text: '迎来二审判决', nextSceneId: 'second_trial_final' }
+                ]
+            },
+
+            second_trial_final: {
+                id: 'second_trial_final',
+                title: '二审维持原判：法律的无力',
+                description: '二审判决：驳回上诉，维持原判。判决明确“被上诉人不构成对上诉人一般人格权的侵害”。漫长维权以败诉告终。你可以选择接下来的路。',
+                choices: [
+                    { id: 'accept_bitter', text: '接受现实，继续人生', nextSceneId: 'bitter_reality_ending' },
+                    { id: 'criticize_system', text: '转向体系批判与倡导', nextSceneId: 'system_critic_ending' },
+                    { id: 'alternative_way', text: '走向法外正义的发声', nextSceneId: 'alternative_justice' }
+                ],
+                isEnding: false,
+                endingType: 'bad',
+                bgColor: '#2F4F4F'
+            },
+
+            
+
+            partial_victory: {
+                id: 'partial_victory',
+                title: '污点结局',
+                description: '现场在混乱与指责声中匆匆结束，没有任何明确的结论。随后，两位女生在网络上继续发文影射你“可疑”，围观者的二次创作与扩散让舆论渐渐偏向她们的叙事。你无法彻底洗脱怀疑，社交关系与职场信任度持续下滑。多年之后，搜索你的名字仍会跳出这次“事件”，人生步入阴影与质疑的长夜。',
+                choices: [],
+                isEnding: true,
+                endingType: 'bad',
+                bgColor: '#4B4B4B'
+            },
+
+            escape_ending: {
+                id: 'escape_ending',
+                title: '逃离失败：被带往警务室',
+                description: '你试图离开，但很快被地铁安保控制。按照流程，你被带入警务室接受询问，事件并未结束。',
+                choices: [
+                    { id: 'cooperate_at_station', text: '配合说明情况，进入警方处置', nextSceneId: 'police_scene' }
+                ],
+                isEnding: false,
+                bgColor: '#696969'
+            },
+
+            hero_ending: {
+                id: 'hero_ending',
+                title: '英雄结局',
+                description: '你不仅成功为自己洗清了冤屈，还协助警方破获了一个地铁诈骗团伙。这个团伙已经作案多起，你的勇敢和智慧拯救了无数潜在受害者。警方为你颁发了见义勇为奖，媒体争相报道你的事迹。真正的英雄！',
+                choices: [],
+                isEnding: true,
+                endingType: 'good',
+                bgColor: '#FFD700'
+            },
+
+            wise_ending: {
+                id: 'wise_ending',
+                title: '智者结局',
+                description: '你向车厢里的人发表了一段充满智慧的讲话，关于如何理性对待冲突，如何保护自己的权益，以及如何建设更好的社会环境。大家深受启发，纷纷为你鼓掌。你用智慧化解了危机，也教育了大众。',
+                choices: [],
+                isEnding: true,
+                endingType: 'good',
+                bgColor: '#4169E1'
+            },
+            anger_scene: {
+                id: 'anger_scene',
+                title: '愤怒反击',
+                description: '你忍无可忍地站起来："够了！我没有偷拍任何人！你们这样诬陷别人是犯法的！"你的愤怒让周围的人都注意到了。',
+                choices: [
+                    { id: 'violent_action', text: '动手推搡她们', nextSceneId: 'mutual_combat' },
+                    { id: 'controlled_anger', text: '控制情绪，理性反驳', nextSceneId: 'evidence_scene' },
+                    { id: 'threaten_legal', text: '威胁要起诉她们', nextSceneId: 'legal_threat' }
+                ]
+            },
+            violence_immediate: {
+                id: 'violence_immediate',
+                title: '愤怒失控',
+                description: '怒火瞬间点燃，你一把推开安保，朝对面的两名女生冲去。乘客尖叫、场面混乱，手机镜头纷纷对准你们。',
+                choices: [
+                    { id: 'start_fight', text: '直接动手（全面升级）', nextSceneId: 'mutual_combat' },
+                    { id: 'regain_control', text: '强行冷静下来', nextSceneId: 'evidence_scene' }
+                ]
+            },
+            legal_threat: {
+                id: 'legal_threat',
+                title: '法律威胁',
+                description: '你严肃地说："我警告你们，诽谤他人是犯法的。如果你们不能提供证据，我将起诉你们。"她们开始显得紧张，小声商量着什么。',
+                choices: [
+                    { id: 'follow_through', text: '真的开始联系律师', nextSceneId: 'legal_victory' },
+                    { id: 'give_chance', text: '给她们最后一次机会道歉', nextSceneId: 'public_apology_scene' },
+                    { id: 'call_police_now', text: '立即报警', nextSceneId: 'police_scene' }
+                ]
+            },
+            passive_ending: {
+                id: 'passive_ending',
+                title: '被动结局',
+                description: '你选择了息事宁人，下车离开了。虽然避免了冲突，但心中的委屈和愤怒让你久久不能平静。有时候，过分的忍让并不能真正解决问题。',
+                choices: [],
+                isEnding: true,
+                endingType: 'neutral',
+                bgColor: '#696969'
+            },
+
+            // 补充所有缺失的场景ID，确保游戏稳定运行
+            deny_evidence: {
+                id: 'deny_evidence',
+                title: '要求证据',
+                description: '你冷静地说："我没有偷拍任何人，请你们拿出证据。如果没有证据就随意指控他人，这是诽谤。"周围乘客开始注意到你的冷静态度。',
+                choices: [
+                    { id: 'technical_explanation', text: '从技术角度解释反光现象', nextSceneId: 'technical_analysis' },
+                    { id: 'demand_monitoring', text: '要求调取车厢监控', nextSceneId: 'surveillance_request' },
+                    { id: 'seek_witnesses', text: '寻找目击证人', nextSceneId: 'witness_search' },
+                    { id: 'threaten_defamation', text: '威胁以诽谤起诉她们', nextSceneId: 'defamation_threat' }
+                ]
+            },
+
+            phone_evidence: {
+                id: 'phone_evidence',
+                title: '手机证据',
+                description: '你把手机递给周围乘客："大家看看，我刚才一直在看微信聊天，相册里也没有任何偷拍照片。"几个热心乘客检查后点头确认。但两名女生辩称：相册没图不代表没拍，可能是“独立存储设备”或“无线传输”。',
+                choices: [
+                    { id: 'request_rf_scan', text: '请求安保/警方进行金属与射频检测', nextSceneId: 'technical_check' },
+                    { id: 'reinspect_shoes', text: '在警方在场下再次检查鞋子', nextSceneId: 'forced_shoe_removal' },
+                    { id: 'collect_witnesses_more', text: '继续收集证人并全程录像备案', nextSceneId: 'witness_contacts' },
+                    { id: 'turn_to_law', text: '保留证据，进入法律之路', nextSceneId: 'legal_action' }
+                ]
+            },
+
+            witness_contacts: {
+                id: 'witness_contacts',
+                title: '收集证人信息',
+                description: '几位乘客愿意为你作证，你快速记下了他们的联系方式。这些证人可能在后续的法律程序中起到关键作用。',
+                choices: [
+                    { id: 'thank_witnesses', text: '感谢证人并准备下车', nextSceneId: 'platform_preparation' },
+                    { id: 'organize_testimony', text: '当场组织证人作证', nextSceneId: 'witness_testimony' },
+                    { id: 'document_everything', text: '要求证人录像记录', nextSceneId: 'video_testimony' },
+                    { id: 'confront_with_witnesses', text: '带着证人直接对质', nextSceneId: 'witness_confrontation' }
+                ]
+            },
+
+            // 为所有可能的场景ID创建默认场景，避免游戏崩溃
+            platform_preparation: { id: 'platform_preparation', title: '准备下车', description: '列车即将到站，你准备在证人的支持下面对接下来的调查。', choices: [{ id: 'go_to_platform', text: '前往站台', nextSceneId: 'platform_humiliation' }] },
+            witness_testimony: { id: 'witness_testimony', title: '证人作证', description: '证人们纷纷为你作证，证明你一直在看手机。', choices: [{ id: 'continue', text: '继续', nextSceneId: 'apology_scene' }] },
+            video_testimony: { id: 'video_testimony', title: '录像作证', description: '证人录下了他们的证词，这将是重要的证据。', choices: [{ id: 'continue', text: '继续', nextSceneId: 'evidence_collection' }] },
+            witness_confrontation: { id: 'witness_confrontation', title: '证人对质', description: '在证人的支持下，你与指控者进行了直接对质。', choices: [{ id: 'continue', text: '继续', nextSceneId: 'confrontation_resolution' }] },
+            technical_analysis: { id: 'technical_analysis', title: '技术分析', description: '你从光学原理解释了反光现象。', choices: [{ id: 'continue', text: '继续', nextSceneId: 'scientific_vindication' }] },
+            surveillance_request: { id: 'surveillance_request', title: '监控申请', description: '你要求调取车厢监控录像。', choices: [{ id: 'continue', text: '继续', nextSceneId: 'surveillance_scene' }] },
+            witness_search: { id: 'witness_search', title: '寻找证人', description: '你开始寻找愿意作证的目击者。', choices: [{ id: 'continue', text: '继续', nextSceneId: 'witness_scene' }] },
+            defamation_threat: { id: 'defamation_threat', title: '诽谤威胁', description: '你威胁要以诽谤罪起诉她们。', choices: [{ id: 'continue', text: '继续', nextSceneId: 'legal_threat' }] },
+
+            // 新增结局
+            alternative_justice: {
+                id: 'alternative_justice',
+                title: '法外正义',
+                description: '既然法律无法给你正义，你决定用其他方式寻求公道。你开始在网络上持续发声，用自己的经历警醒更多人。虽然没有法律胜利，但你的故事成为了无数男性的警示和支持。',
+                choices: [],
+                isEnding: true,
+                endingType: 'neutral',
+                bgColor: '#708090'
+            },
+
+            cynical_ending: {
+                id: 'cynical_ending',
+                title: '愤世嫉俗结局',
+                description: '法律的败诉让你变得愤世嫉俗。"法院说我遭受的羞辱不构成侵害，那还有什么正义可言？"你开始怀疑一切，对社会失去信心。从此你变得冷漠而偏激，法律的失败彻底改变了你的人生观。',
+                choices: [],
+                isEnding: true,
+                endingType: 'bad',
+                bgColor: '#2F4F4F'
+            },
+
+            bitter_reality_ending: {
+                id: 'bitter_reality_ending',
+                title: '残酷现实结局',
+                description: '三年法律战争败诉后，你深深感受到了现实的残酷。法院认定那两个女生"不构成侵害"，这意味着你所遭受的屈辱、被迫脱鞋、站台羞辱在法律眼中都不算什么。你明白了一个残酷的事实：有时候，正义并不只会迟到，也许永远也不会到来。你选择带着这份伤痛和对法律体系的失望继续生活。',
+                choices: [],
+                isEnding: true,
+                endingType: 'bad',
+                bgColor: '#2F4F4F'
+            },
+
+            system_critic_ending: {
+                id: 'system_critic_ending',
+                title: '体系批判者结局',
+                description: '败诉后，你成为了现行法律体系的尖锐批评者。你在各种场合指出："当一个男性被无端指控、被迫脱鞋、在众人面前羞辱，法院却说这不构成侵害，这个体系到底在保护谁？"你的批评引发了社会对男性权益保护不足和司法偏见的广泛讨论。',
+                choices: [],
+                isEnding: true,
+                endingType: 'neutral',
+                bgColor: '#8B4513'
+            },
+            mutual_combat: {
+                id: 'mutual_combat',
+                title: '互殴结局',
+                description: '冲突全面升级，你与两名女生在车厢内互殴，乘客尖叫，安保报警。到派出所后，警方只按“打架斗殴”处理，对最初的偷拍指控再无人提起。双方被批评教育/拘留并罚款，但关于偷拍的污名彻底消失。荒诞却有效，这成了你唯一的“好结局”。',
+                choices: [],
+                isEnding: true,
+                endingType: 'good',
+                bgColor: '#FF6347'
+            },
+            legal_action: {
+                id: 'legal_action',
+                title: '提起诽谤诉讼的决定',
+                description: '你当场表明态度：将就诽谤指控提起民事诉讼，要求公开道歉与赔偿。随后你开始准备起诉材料。',
+                choices: [
+                    { id: 'go_file', text: '立案并进入一审', nextSceneId: 'first_trial' },
+                    { id: 'public_statement', text: '发布公开声明澄清事实', nextSceneId: 'viral_post' }
+                ]
+            },
+            dignity_stand: {
+                id: 'dignity_stand',
+                title: '维护尊严：拒绝当众脱鞋',
+                description: '你明确表示：在没有证据的情况下，拒绝当众进行羞辱性检查。你强调将通过正当程序解决问题。',
+                choices: [
+                    { id: 'rational_rights', text: '理性维权：宣告你的合法权利', nextSceneId: 'legal_threat' },
+                    { id: 'call_police_formal', text: '报警备案，请求正式执法流程', nextSceneId: 'police_scene' },
+                    { id: 'anger_spill', text: '情绪失控，动手推搡', nextSceneId: 'mutual_combat' },
+                    { id: 'law_route', text: '转向法律之路（起诉）', nextSceneId: 'legal_action' }
+                ]
+            },
+            forced_shoe_removal: {
+                id: 'forced_shoe_removal',
+                title: '当众脱鞋检查',
+                description: '在众人的注视下，你被要求脱下鞋子与袜子检查。安保与围观者确认鞋内、鞋垫、鞋舌等位置，并未发现任何拍摄设备。女生面露迟疑，但仍坚称“绿光可疑”。',
+                choices: [
+                    { id: 'press_delete_media', text: '要求当场删除她们拍摄你的影像', nextSceneId: 'photo_deletion' },
+                    { id: 'go_public_apology', text: '要求公开承认判断失误', nextSceneId: 'public_apology_scene' },
+                    { id: 'record_witness', text: '记录愿作证的围观者联系方式', nextSceneId: 'witness_contacts' },
+                    { id: 'move_to_law', text: '保留证据，进入法律之路', nextSceneId: 'legal_action' }
+                ]
+            }
+        };
+    }
+
+    setupEventListeners() {
+        this.canvas.addEventListener('click', (event) => {
+            const rect = this.canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            this.handleClick(x, y);
+        });
+
+        // 添加键盘支持
+        document.addEventListener('keydown', (event) => {
+            const choiceIndex = parseInt(event.key) - 1;
+            if (choiceIndex >= 0 && choiceIndex < this.currentScene.choices.length) {
+                this.selectChoice(this.currentScene.choices[choiceIndex]);
+            }
+        });
+    }
+
+    handleClick(x, y) {
+        const scale = this.getScale();
+        const startY = this.scaleValue(320);
+        const buttonHeight = this.scaleValue(48);
+        const buttonSpacing = this.scaleValue(58);
+
+        for (let i = 0; i < this.currentScene.choices.length; i++) {
+            const buttonY = startY + i * buttonSpacing;
+            if (y >= buttonY && y <= buttonY + buttonHeight) {
+                this.selectChoice(this.currentScene.choices[i]);
+                break;
+            }
+        }
+
+        // 重新开始按钮（在结局界面）
+        if (this.currentScene.isEnding) {
+            const buttonWidth = this.scaleValue(100);
+            const buttonHeight = this.scaleValue(40);
+            const buttonX = (this.displayWidth - buttonWidth) / 2;
+            const buttonY = this.scaleValue(520);
+            
+            if (y >= buttonY && y <= buttonY + buttonHeight && x >= buttonX && x <= buttonX + buttonWidth) {
+                this.restartGame();
+            }
+        }
+    }
+
+    selectChoice(choice) {
+        // 更新游戏状态
+        this.updateGameState(choice);
+        
+        // 切换到下一个场景
+        this.currentScene = this.gameData[choice.nextSceneId];
+        if (!this.currentScene) {
+            console.error('找不到场景:', choice.nextSceneId);
+            this.currentScene = this.gameData.partial_victory; // 默认结局
+        }
+        this.render();
+    }
+
+    updateGameState(choice) {
+        switch (choice.id) {
+            case 'apologize':
+                this.gameState.apology = true;
+                this.gameState.reputation -= 20;
+                break;
+            case 'call_police':
+                this.gameState.legalAction = true;
+                this.gameState.reputation += 10;
+                break;
+            case 'counter_accuse':
+                this.gameState.reputation += 5;
+                break;
+            case 'show_phone':
+                this.gameState.evidence.push('phone_contents');
+                this.gameState.reputation += 15;
+                break;
+            case 'find_witnesses':
+                this.gameState.witnesses += 1;
+                this.gameState.reputation += 10;
+                break;
+            case 'record_video':
+                this.gameState.evidence.push('video_recording');
+                this.gameState.reputation += 20;
+                break;
+            case 'get_angry':
+                this.gameState.violence = true;
+                this.gameState.reputation -= 15;
+                break;
+        }
+    }
+
+    startGame() {
+        this.currentScene = this.gameData.start;
+        this.render();
+    }
+
+    restartGame() {
+        this.initializeGameState();
+        this.startGame();
+    }
+
+    render() {
+        this.ctx.clearRect(0, 0, this.displayWidth, this.displayHeight);
+        
+        // 设置背景颜色
+        if (this.currentScene.bgColor) {
+            this.ctx.fillStyle = this.currentScene.bgColor;
+            this.ctx.fillRect(0, 0, this.displayWidth, this.displayHeight);
+        }
+        
+        const scale = this.getScale();
+        
+        // 绘制标题
+        this.ctx.fillStyle = '#FFFFFF';
+        this.ctx.font = `bold ${Math.max(22, 26 * scale)}px Arial, sans-serif`;
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(this.currentScene.title, this.displayWidth / 2, this.scaleValue(40));
+        
+        // 绘制描述
+        this.ctx.font = `${Math.max(18, 20 * scale)}px Arial, sans-serif`;
+        this.ctx.textAlign = 'left';
+        this.drawWrappedText(
+            this.currentScene.description, 
+            this.scaleValue(20), 
+            this.scaleValue(80), 
+            this.displayWidth - this.scaleValue(40), 
+            Math.max(22, 24 * scale)
+        );
+        
+        // 绘制游戏状态
+        // 已隐藏状态栏
+        // this.drawGameStatus();
+        
+        // 绘制选择按钮
+        this.drawChoices();
+        
+        // 如果是结局，显示重新开始按钮
+        if (this.currentScene.isEnding) {
+            this.drawRestartButton();
+        }
+    }
+
+    drawWrappedText(text, x, y, maxWidth, lineHeight) {
+        const words = text.split('');
+        let line = '';
+        let currentY = y;
+
+        for (let n = 0; n < words.length; n++) {
+            const testLine = line + words[n];
+            const metrics = this.ctx.measureText(testLine);
+            const testWidth = metrics.width;
+
+            if (testWidth > maxWidth && n > 0) {
+                this.ctx.fillText(line, x, currentY);
+                line = words[n];
+                currentY += lineHeight;
+            } else {
+                line = testLine;
+            }
+        }
+        this.ctx.fillText(line, x, currentY);
+    }
+
+    // 获取缩放比例，用于适配不同屏幕尺寸
+    getScale() {
+        return Math.min(this.displayWidth / 375, this.displayHeight / 667);
+    }
+
+    // 缩放坐标
+    scaleValue(value) {
+        return value * this.getScale();
+    }
+
+    drawGameStatus() { /* 状态栏已隐藏 */ }
+
+    drawChoices() {
+        if (this.currentScene.choices.length === 0) return;
+
+        const scale = this.getScale();
+        const startY = this.scaleValue(320);
+        const buttonHeight = this.scaleValue(48);
+        const buttonSpacing = this.scaleValue(58);
+
+        this.ctx.font = `${Math.max(16, 18 * scale)}px Arial, sans-serif`;
+
+        for (let i = 0; i < this.currentScene.choices.length; i++) {
+            const choice = this.currentScene.choices[i];
+            const buttonY = startY + i * buttonSpacing;
+
+            // 绘制按钮背景
+            this.ctx.fillStyle = '#4A4A4A';
+            this.ctx.fillRect(this.scaleValue(10), buttonY, this.displayWidth - this.scaleValue(20), buttonHeight);
+
+            // 绘制按钮边框
+            this.ctx.strokeStyle = '#FFD700';
+            this.ctx.lineWidth = Math.max(1, 2 * scale);
+            this.ctx.strokeRect(this.scaleValue(10), buttonY, this.displayWidth - this.scaleValue(20), buttonHeight);
+
+            // 绘制选择文本
+            this.ctx.fillStyle = '#FFFFFF';
+            this.ctx.textAlign = 'left';
+            this.ctx.textBaseline = 'middle'; // 设置为垂直居中
+            this.ctx.fillText(`${i + 1}. ${choice.text}`, this.scaleValue(20), buttonY + buttonHeight / 2);
+        }
+    }
+
+    drawRestartButton() {
+        const scale = this.getScale();
+        const buttonWidth = this.scaleValue(120);
+        const buttonHeight = this.scaleValue(48);
+        const buttonX = (this.displayWidth - buttonWidth) / 2;
+        const buttonY = this.scaleValue(520);
+        
+        this.ctx.fillStyle = '#4CAF50';
+        this.ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
+        
+        this.ctx.strokeStyle = '#FFFFFF';
+        this.ctx.lineWidth = Math.max(1, 2 * scale);
+        this.ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
+        
+        this.ctx.fillStyle = '#FFFFFF';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle'; // 设置为垂直居中
+        this.ctx.font = `${Math.max(18, 20 * scale)}px Arial, sans-serif`;
+        this.ctx.fillText('重新开始', buttonX + buttonWidth / 2, buttonY + buttonHeight / 2);
+    }
+}
+
+// 游戏启动
+window.addEventListener('load', () => {
+    new SubwayIncidentGame();
+});
+    </script>
+</body>
+</html>
