@@ -197,6 +197,19 @@ class SubwayIncidentGame {
             violence: false,
             apology: false
         };
+
+        // 交互瞬态状态（按钮按下高亮）
+        if (this.choicePressTimeout) {
+            clearTimeout(this.choicePressTimeout);
+            this.choicePressTimeout = null;
+        }
+        this.pressedChoiceIndex = null;
+
+        if (this.restartPressTimeout) {
+            clearTimeout(this.restartPressTimeout);
+            this.restartPressTimeout = null;
+        }
+        this.pressedRestart = false;
     }
 
     initializeGameData() {
@@ -747,7 +760,7 @@ class SubwayIncidentGame {
         document.addEventListener('keydown', (event) => {
             const choiceIndex = parseInt(event.key) - 1;
             if (choiceIndex >= 0 && choiceIndex < this.currentScene.choices.length) {
-                this.selectChoice(this.currentScene.choices[choiceIndex]);
+                this.triggerChoicePress(choiceIndex);
             }
         });
     }
@@ -761,7 +774,7 @@ class SubwayIncidentGame {
         for (let i = 0; i < this.currentScene.choices.length; i++) {
             const buttonY = startY + i * buttonSpacing;
             if (y >= buttonY && y <= buttonY + buttonHeight) {
-                this.selectChoice(this.currentScene.choices[i]);
+                this.triggerChoicePress(i);
                 break;
             }
         }
@@ -774,9 +787,45 @@ class SubwayIncidentGame {
             const buttonY = this.scaleValue(520);
             
             if (y >= buttonY && y <= buttonY + buttonHeight && x >= buttonX && x <= buttonX + buttonWidth) {
-                this.restartGame();
+                this.triggerRestartPress();
             }
         }
+    }
+
+    // 按钮点击高亮后再切换场景
+    triggerChoicePress(index) {
+        // 记录当前场景与选择，避免异步期间场景变化导致索引失效
+        const sceneAtPress = this.currentScene;
+        const choiceAtPress = sceneAtPress.choices[index];
+        if (!choiceAtPress) return;
+
+        // 设置按下状态并立即重绘
+        this.pressedChoiceIndex = index;
+        this.render();
+
+        // 清理已有的定时器，防止竞态
+        if (this.choicePressTimeout) {
+            clearTimeout(this.choicePressTimeout);
+        }
+        this.choicePressTimeout = setTimeout(() => {
+            this.pressedChoiceIndex = null;
+            this.choicePressTimeout = null;
+            this.selectChoice(choiceAtPress);
+        }, 120);
+    }
+
+    // 重新开始按钮点击高亮后再执行
+    triggerRestartPress() {
+        this.pressedRestart = true;
+        this.render();
+        if (this.restartPressTimeout) {
+            clearTimeout(this.restartPressTimeout);
+        }
+        this.restartPressTimeout = setTimeout(() => {
+            this.pressedRestart = false;
+            this.restartPressTimeout = null;
+            this.restartGame();
+        }, 120);
     }
 
     selectChoice(choice) {
@@ -923,11 +972,12 @@ class SubwayIncidentGame {
             const buttonY = startY + i * buttonSpacing;
 
             // 绘制按钮背景
-            this.ctx.fillStyle = '#4A4A4A';
+            const isPressed = i === this.pressedChoiceIndex;
+            this.ctx.fillStyle = isPressed ? '#6CA0FF' : '#4A4A4A';
             this.ctx.fillRect(this.scaleValue(10), buttonY, this.displayWidth - this.scaleValue(20), buttonHeight);
 
             // 绘制按钮边框
-            this.ctx.strokeStyle = '#FFD700';
+            this.ctx.strokeStyle = isPressed ? '#AECBFF' : '#FFD700';
             this.ctx.lineWidth = Math.max(1, 2 * scale);
             this.ctx.strokeRect(this.scaleValue(10), buttonY, this.displayWidth - this.scaleValue(20), buttonHeight);
 
@@ -946,10 +996,11 @@ class SubwayIncidentGame {
         const buttonX = (this.displayWidth - buttonWidth) / 2;
         const buttonY = this.scaleValue(520);
         
-        this.ctx.fillStyle = '#4CAF50';
+        // 点击蓝色高亮反馈（更淡）
+        this.ctx.fillStyle = this.pressedRestart ? '#6CA0FF' : '#4CAF50';
         this.ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
         
-        this.ctx.strokeStyle = '#FFFFFF';
+        this.ctx.strokeStyle = this.pressedRestart ? '#AECBFF' : '#FFFFFF';
         this.ctx.lineWidth = Math.max(1, 2 * scale);
         this.ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
         
